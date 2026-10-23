@@ -1,10 +1,74 @@
-### 上传
+### 上传（执行成功后会自动把返回的 id 存进 docId 变量）
 POST http://localhost:8081/api/doc/upload
 Content-Type: multipart/form-data; boundary=WebAppBoundary
 
 --WebAppBoundary
-Content-Disposition: form-data; name="file"; filename="sample.txt"
+Content-Disposition: form-data; name="file"; filename="big.txt"
 Content-Type: text/plain
 
-< ./sample.txt
+< ./big.txt
 --WebAppBoundary--
+
+> {%
+    // 把 Result.data（新文档 id）存进全局变量，下个请求用 {{docId}} 取
+    client.global.set("docI", response.body.data);
+%}
+
+### 解析（{{docId}} 由上面那段脚本自动带入，不用手改）
+POST http://localhost:8081/api/doc/{{docId}}/parse
+
+
+### ===== 验收测试 1：幂等 =====
+### 对同一个 id 再解析一次，预期仍返回同样的块数，且 chunk 表行数不变（不是翻倍）
+POST http://localhost:8081/api/doc/4/parse
+
+
+### ===== 验收测试 2：文档不存在 =====
+### 预期 HTTP 400 + {"code":400,"msg":"文档不存在：999"}，验证全局异常处理生效
+POST http://localhost:8081/api/doc/999/parse
+
+
+### ===== 验收测试 3-a：上传一个后缀是 pdf 的假文件 =====
+### 需要先在同目录放 fake.pdf（内容随便，把 big.txt 复制一份改名即可）
+POST http://localhost:8081/api/doc/upload
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="fake.pdf"
+Content-Type: application/pdf
+
+< ./fake.pdf
+--WebAppBoundary--
+
+> {%
+    // 把假 pdf 的 id 单独存一个变量，避免覆盖掉上面的 docI
+    client.global.set("pdfId", response.body.data);
+%}
+
+### ===== 验收测试 3-b：解析假 pdf =====
+### 预期 HTTP 400 + {"code":400,"msg":"暂不支持解析该类型：pdf"}
+### 验证的是「解析器接口按 supports 挑实现，没实现时给出明确提示」而不是 500
+POST http://localhost:8081/api/doc/{{pdfId}}/parse
+
+
+### ===== 验收测试 4-a：上传一个只有空白的 txt =====
+### 需要先在同目录放 blank.txt（内容只有空格和换行）
+POST http://localhost:8081/api/doc/upload
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="blank.txt"
+Content-Type: text/plain
+
+< ./blank.txt
+--WebAppBoundary--
+
+> {%
+    client.global.set("blankId", response.body.data);
+%}
+
+### ===== 验收测试 4-b：解析空白 txt =====
+### 预期 HTTP 500 + {"code":500,"msg":"解析结果为空：文件里没可切分的正文"}
+### 关键不是这条报错，而是随后去库里看 doc.status 是否变成了 3
+### 变成 3 才说明「失败状态能落库、没被事务回滚」这件事做对了
+POST http://localhost:8081/api/doc/{{blankId}}/parse

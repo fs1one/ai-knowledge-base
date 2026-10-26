@@ -16,8 +16,10 @@ public class Doc {
 
     private Long userId;
     private String name;
+    private String storedName;
     private Long size;
     private Integer chunkCount;
+    private String strategy;
     private Integer status;
     private LocalDateTime createdAt;
 }

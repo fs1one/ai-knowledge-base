@@ -1,4 +1,11 @@
 package com.first.aikb.parser;
 
-public class DocumentParser {
+import java.io.IOException;
+import java.nio.file.Path;
+
+public interface DocumentParser {
+
+    boolean supports(String suffix);
+
+    String parse(Path file) throws IOException;
 }

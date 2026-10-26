@@ -60,3 +60,45 @@ CREATE TABLE IF NOT EXISTS eval_case (
   note              VARCHAR(500)  NULL,
   PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评测用例';
+
+ALTER TABLE doc ADD COLUMN stored_name VARCHAR(64) NULL COMMENT '磁盘文件名' AFTER name;
+
+DELETE FROM doc WHERE name IN ('fake.pdf', 'blank.txt');
+DELETE FROM chunk WHERE doc_id NOT IN (SELECT id FROM doc);
+
+-- chunk 表：记录这一行是哪套策略切出来的；默认 fixed 是为了让 Day3 的旧数据不用回填
+ALTER TABLE chunk ADD COLUMN strategy VARCHAR(16) NOT NULL DEFAULT 'fixed'
+    COMMENT '切分策略：fixed 定长 / paragraph 段落感知' AFTER seq;
+
+-- 同一文档同一策略下 seq 必须唯一，所以索引要把 strategy 带进去
+ALTER TABLE chunk DROP INDEX idx_doc_seq;
+ALTER TABLE chunk ADD KEY idx_doc_strategy_seq (doc_id, strategy, seq);
+
+-- doc 表：记录这份文档最近一次用的是哪套（chunk_count 也跟着它的语义走）
+ALTER TABLE doc ADD COLUMN strategy VARCHAR(16) NOT NULL DEFAULT 'fixed'
+    COMMENT '最近一次切分策略' AFTER chunk_count;
+
+USE ai_knowledge_base;
+
+-- ① 两套是否并存
+SELECT strategy, COUNT(*) AS 行数, MIN(seq) AS 起始seq, MAX(seq) AS 结束seq
+FROM chunk WHERE doc_id = 10 GROUP BY strategy;
+
+-- ② 对比表：块数 / 长度分布 / 边界完整性
+SELECT strategy                                             AS 策略,
+       COUNT(*)                                             AS 块数,
+       ROUND(AVG(char_count))                               AS 平均长度,
+       MIN(char_count)                                      AS 最短,
+       MAX(char_count)                                      AS 最长,
+       ROUND(100 * SUM(CASE WHEN TRIM(content) REGEXP '[。！？.!?；;…]$'
+                                THEN 1 ELSE 0 END) / COUNT(*), 1) AS 句末结束占比
+FROM chunk
+WHERE doc_id = 10
+GROUP BY strategy;
+
+-- ③ 看块尾到底断在哪（人眼确认，这比数字有说服力）
+SELECT strategy, seq, RIGHT(TRIM(content), 18) AS 块尾
+FROM chunk WHERE doc_id = 10 ORDER BY strategy, seq;
+
+-- ④ doc 表：应记录最后一次用的策略
+SELECT id, name, chunk_count, strategy, status FROM doc WHERE id = 10;

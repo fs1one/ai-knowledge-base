@@ -10,16 +10,18 @@ Content-Type: text/plain
 --WebAppBoundary--
 
 > {%
-    // 把 Result.data（新文档 id）存进全局变量，下个请求用 {{docId}} 取
-    client.global.set("docI", response.body.data);
+    // 变量名必须叫 docId，下面 {{docId}} 才取得到。之前写成 docI（少个 d），请求会退化成 /api/doc//parse
+    client.global.set("docId", response.body.data);
 %}
 
 ### 解析（{{docId}} 由上面那段脚本自动带入，不用手改）
+### 注意：不传 strategy 时走默认值 paragraph（Day4 之后的行为）
 POST http://localhost:8081/api/doc/{{docId}}/parse
 
 
 ### ===== 验收测试 1：幂等 =====
 ### 对同一个 id 再解析一次，预期仍返回同样的块数，且 chunk 表行数不变（不是翻倍）
+### 4 是硬编码的旧 id，如果报「文档不存在：4」就换成你自己库里的一个 id
 POST http://localhost:8081/api/doc/4/parse
 
 
@@ -41,7 +43,7 @@ Content-Type: application/pdf
 --WebAppBoundary--
 
 > {%
-    // 把假 pdf 的 id 单独存一个变量，避免覆盖掉上面的 docI
+    // 把假 pdf 的 id 单独存一个变量，避免覆盖掉上面的 docId
     client.global.set("pdfId", response.body.data);
 %}
 
@@ -72,3 +74,51 @@ Content-Type: text/plain
 ### 关键不是这条报错，而是随后去库里看 doc.status 是否变成了 3
 ### 变成 3 才说明「失败状态能落库、没被事务回滚」这件事做对了
 POST http://localhost:8081/api/doc/{{blankId}}/parse
+
+
+### ================================================================
+### Day4 · 策略对比（追加段，与上面 Day3 的用例互不干扰）
+### 为什么单独上传一份：这一组要能独立跑，不依赖上面是否执行过；
+### 变量统一用 docId，和 Day3 那条走同一套机制（cmpDocId 单独一套容易失效）
+### ================================================================
+
+### Day4-0 上传对比用的文档
+POST http://localhost:8081/api/doc/upload
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="big.txt"
+Content-Type: text/plain
+
+< ./big.txt
+--WebAppBoundary--
+
+> {%
+    // 三行日志：脚本有没有跑、响应长什么样、变量最终是什么值 —— 全在 Response 的 Console 标签里
+    client.log("上传响应 = " + JSON.stringify(response.body));
+    client.global.set("docId", response.body.data);
+    client.log("docId = " + client.global.get("docId"));
+%}
+
+### Day4-1 第一刀：定长（预期 data = 3）
+POST http://localhost:8081/api/doc/{{docId}}/parse?strategy=fixed
+
+
+### Day4-2 第二刀：段落感知（预期 data = 3）
+### 块数一样不代表没生效，去库里看块长：fixed 是 800/800/444，paragraph 是 722/782/345
+POST http://localhost:8081/api/doc/{{docId}}/parse?strategy=paragraph
+
+
+### Day4-3 段落再跑一次（策略内幂等）
+### 预期仍返回 3，且 chunk 表里 paragraph 那套还是 3 行 —— 如果变成 6 行，说明删除条件没带 strategy
+POST http://localhost:8081/api/doc/{{docId}}/parse?strategy=paragraph
+
+
+### Day4-4 非法策略（预期 400）
+### 预期 {"code":400,"msg":"不支持的切分策略：abc（可选 fixed / paragraph）"}
+POST http://localhost:8081/api/doc/{{docId}}/parse?strategy=abc
+
+
+### Day4-5 不传 strategy（预期走默认 paragraph）
+### 验证 @RequestParam 的 defaultValue 生效，返回值和 Day4-2 一样是 3
+POST http://localhost:8081/api/doc/{{docId}}/parse

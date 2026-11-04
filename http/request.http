@@ -1,0 +1,9 @@
+# 在 IDEA 打开 D:\mywebapps\ai-knowledge-base，启动应用。
+# 在 IDEA HTTP Client 中执行；端口按实际启动日志确认。
+GET http://localhost:8081/api/index/status
+
+### 取一个你上传的文档里确实有答案的问题
+GET http://localhost:8081/api/search?q=替换成资料内问题&topK=3
+
+### 仅当缺少索引或向量模型已变更时重建；会更新索引数据
+POST http://localhost:8081/api/index/rebuild?strategy=paragraph

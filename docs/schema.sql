@@ -119,3 +119,16 @@ ALTER TABLE chunk ADD COLUMN embedding_model VARCHAR(64) NULL
 -- ④ 核对：应该是 1 篇文档、fixed 3 块、paragraph 3 块
 SELECT COUNT(*) FROM doc;
 SELECT strategy, COUNT(*) FROM chunk GROUP BY strategy;
+
+-- 改一处表结构：加 anchor，expected_chunk_id 保留但改成「算出来的缓存」
+ALTER TABLE eval_case ADD COLUMN anchor VARCHAR(120) NULL
+    COMMENT '期望块内的一段稳定原文，换粒度后靠它重算 chunk id' AFTER expected_chunk_id;
+
+-- 反查回填：% 和 _ 在 LIKE 里是通配符，所以 anchor 里不要出现这两个字符（我给的 30 条已避开）
+UPDATE eval_case e
+SET e.expected_chunk_id = (
+    SELECT MIN(c.id) FROM chunk c
+    WHERE c.strategy = 'paragraph'
+      AND c.content LIKE CONCAT('%', e.anchor, '%')
+)
+WHERE e.answerable = 1;

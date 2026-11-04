@@ -1,0 +1,131 @@
+### ============================================================
+### Day6 第 2 步：把 6 篇语料补进真库（README + day1~4 + jd-baseline）
+### 用法：从上到下一条条点「运行」，每条执行完再跑下一条
+### 预期：6 篇上传后 id 依次 +1，解析块数合计 17（加上原有 big.txt 3 块 = 20 块）
+### 注意：路径以本文件所在目录（http/）为基准，所以 README 要写 ../README.md
+### ============================================================
+
+
+### ① 上传 README.md
+POST http://localhost:8081/api/doc/upload
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="README.md"
+Content-Type: text/plain
+
+< ../README.md
+--WebAppBoundary--
+
+> {% client.global.set("idReadme", response.body.data); %}
+
+### ①-parse 解析 README（预期 2 块）
+POST http://localhost:8081/api/doc/{{idReadme}}/parse?strategy=paragraph
+
+
+### ② 上传 day1.md
+POST http://localhost:8081/api/doc/upload
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="day1.md"
+Content-Type: text/plain
+
+< ../docs/day1.md
+--WebAppBoundary--
+
+> {% client.global.set("idDay1", response.body.data); %}
+
+### ②-parse 解析 day1（预期 1 块）
+POST http://localhost:8081/api/doc/{{idDay1}}/parse?strategy=paragraph
+
+
+### ③ 上传 day2.md
+POST http://localhost:8081/api/doc/upload
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="day2.md"
+Content-Type: text/plain
+
+< ../docs/day2.md
+--WebAppBoundary--
+
+> {% client.global.set("idDay2", response.body.data); %}
+
+### ③-parse 解析 day2（预期 1 块）
+POST http://localhost:8081/api/doc/{{idDay2}}/parse?strategy=paragraph
+
+
+### ④ 上传 day3.md
+POST http://localhost:8081/api/doc/upload
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="day3.md"
+Content-Type: text/plain
+
+< ../docs/day3.md
+--WebAppBoundary--
+
+> {% client.global.set("idDay3", response.body.data); %}
+
+### ④-parse 解析 day3（预期 1 块）
+POST http://localhost:8081/api/doc/{{idDay3}}/parse?strategy=paragraph
+
+
+### ⑤ 上传 day4.md
+POST http://localhost:8081/api/doc/upload
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="day4.md"
+Content-Type: text/plain
+
+< ../docs/day4.md
+--WebAppBoundary--
+
+> {% client.global.set("idDay4", response.body.data); %}
+
+### ⑤-parse 解析 day4（预期 2 块）
+POST http://localhost:8081/api/doc/{{idDay4}}/parse?strategy=paragraph
+
+
+### ⑥ 上传 jd-baseline.md
+POST http://localhost:8081/api/doc/upload
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="jd-baseline.md"
+Content-Type: text/plain
+
+< ../docs/jd-baseline.md
+--WebAppBoundary--
+
+> {% client.global.set("idJd", response.body.data); %}
+
+### ⑥-parse 解析 jd-baseline（预期 10 块，最多，因为表格被 800 字硬切）
+POST http://localhost:8081/api/doc/{{idJd}}/parse?strategy=paragraph
+
+
+### ============================================================
+### ⑦ 重建索引（6 篇都解析完再跑这一条）
+### 预期：chunksWritten = 20、chunksIndexed = 20、dim 约 1146、modelId 形如 tfidf:1146:20:xxxxxxxx
+### 如果 chunksIndexed 是 0 而 chunksWritten 不是 —— 说明向量解码出了问题，回来看报错对照表
+### ============================================================
+POST http://localhost:8081/api/index/rebuild?strategy=paragraph
+
+
+### ⑧ 看载入块数（预期 20）
+GET http://localhost:8081/api/index/status
+
+
+### ⑨ 冒烟：拿一个资料里确实有答案的问题打一发（预期 Top1 是 big.txt 那段讲 RAG 的）
+GET http://localhost:8081/api/search?q=RAG的核心思路是什么&topK=3
+
+
+### ============================================================
+### ⑩ 最后必须验一遍：重启服务（IDEA 里 Stop 再 Run），不要调 rebuild
+### 直接跑下面这条，仍然返回 20 才算「模型持久化」真的通了
+### ============================================================
+GET http://localhost:8081/api/index/status

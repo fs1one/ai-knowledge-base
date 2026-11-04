@@ -20,6 +20,7 @@ public class Chunk {
     private String content;
     private Integer charCount;
     private String embeddingJson;
+    private String embeddingModel;
     // 字段名必须叫 createdAt：MP 靠驼峰转下划线映射到 created_at。
     // 写错一个字母不会影响 insert（值为 null 时 MP 会跳过该列），但 select 时会拼出不存在的列名直接报错
     private LocalDateTime createdAt;

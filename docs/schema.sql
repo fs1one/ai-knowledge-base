@@ -102,3 +102,20 @@ FROM chunk WHERE doc_id = 10 ORDER BY strategy, seq;
 
 -- ④ doc 表：应记录最后一次用的策略
 SELECT id, name, chunk_count, strategy, status FROM doc WHERE id = 10;
+
+USE ai_knowledge_base;
+
+-- ① 删僵尸（没有 stored_name 的永远解析不了）
+DELETE FROM doc WHERE stored_name IS NULL;
+
+-- ② 只保留 doc id = 7（唯一同时有两套切分结果的），其余全删
+DELETE FROM chunk WHERE doc_id <> 7;
+DELETE FROM doc   WHERE id <> 7;
+
+-- ③ 本次新增：记录向量是哪套模型算的（Day5 的核心字段）
+ALTER TABLE chunk ADD COLUMN embedding_model VARCHAR(64) NULL
+    COMMENT '模型指纹，如 tfidf:976:43:50b6271e' AFTER embedding_json;
+
+-- ④ 核对：应该是 1 篇文档、fixed 3 块、paragraph 3 块
+SELECT COUNT(*) FROM doc;
+SELECT strategy, COUNT(*) FROM chunk GROUP BY strategy;

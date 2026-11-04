@@ -33,3 +33,8 @@ build/
 .vscode/
 
 uploads/
+
+# 本地构建/运行产物
+*.log
+_debug/
+index/

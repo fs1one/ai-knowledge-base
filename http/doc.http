@@ -122,3 +122,38 @@ POST http://localhost:8081/api/doc/{{docId}}/parse?strategy=abc
 ### Day4-5 不传 strategy（预期走默认 paragraph）
 ### 验证 @RequestParam 的 defaultValue 生效，返回值和 Day4-2 一样是 3
 POST http://localhost:8081/api/doc/{{docId}}/parse
+
+### ================================================================
+### Day7 第 1 步：CHUNK_SIZE 改成 400 之后，7 篇全部重新 parse
+### !!! 每条必须是独立的 ### 块：### 是「请求分隔符」，# 才是注释。
+### !!! 上次不生效就是三条 POST 挤在一个块里，IDEA 只认块内第一个 request line。
+### id 先确认：SELECT id,name FROM doc ORDER BY id;
+### ================================================================
+
+### Day7-1 big.txt（原 3 块，400 字后约 13 块）
+POST http://localhost:8081/api/doc/7/parse?strategy=paragraph
+
+### Day7-2 README.md（原 2 块）
+POST http://localhost:8081/api/doc/9/parse?strategy=paragraph
+
+### Day7-3 day1.md（原 1 块）
+POST http://localhost:8081/api/doc/10/parse?strategy=paragraph
+
+### Day7-4 day2.md（原 1 块）
+POST http://localhost:8081/api/doc/11/parse?strategy=paragraph
+
+### Day7-5 day3.md（原 1 块）
+POST http://localhost:8081/api/doc/12/parse?strategy=paragraph
+
+### Day7-6 day4.md（原 2 块）
+POST http://localhost:8081/api/doc/13/parse?strategy=paragraph
+
+### Day7-7 jd-baseline.md（原 10 块，最多）
+POST http://localhost:8081/api/doc/14/parse?strategy=paragraph
+
+### Day7-8 重建索引（7 篇都 parse 完再点这条）
+### 预期 chunksWritten 从 20 涨到 35 左右、dim 约 1152（词表会变，不是固定值）
+POST http://localhost:8081/api/index/rebuild?strategy=paragraph
+
+### Day7-9 冒烟：看载入块数（预期 35 上下）
+GET http://localhost:8081/api/index/status

@@ -31,7 +31,7 @@ public class DocServiceImpl implements DocService {
 
     private static final Set<String> ALLOWED = Set.of("pdf", "md", "txt");
 
-    private static final int CHUNK_SIZE = 800;
+    private static final int CHUNK_SIZE = 400;
 
     private static final int CHUNK_OVERLAP = 100;
 

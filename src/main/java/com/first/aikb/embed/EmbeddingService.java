@@ -1,5 +1,7 @@
 package com.first.aikb.embed;
 
+import java.util.List;
+
 public interface EmbeddingService {
 
     float[] embed(String text);
@@ -7,4 +9,8 @@ public interface EmbeddingService {
     int dim();
 
     String modelId();
+
+    default void prepare(List<String> corpus){
+
+    }
 }

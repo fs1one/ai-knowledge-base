@@ -1,6 +1,8 @@
 package com.first.aikb.search;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.first.aikb.embed.DenseVectorCodec;
+import com.first.aikb.embed.EmbeddingService;
 import com.first.aikb.embed.SparseVectorCodec;
 import com.first.aikb.embed.TfIdfEmbeddingService;
 import com.first.aikb.entity.Chunk;
@@ -26,9 +28,10 @@ public class IndexService {
     private static final String SEP = "\\|";
 
     private final ChunkMapper chunkMapper;
-    private final TfIdfEmbeddingService tfIdf;
+    private final EmbeddingService embeddingService;
     private final ChunkIndex chunkIndex;
     private final SparseVectorCodec codec = new SparseVectorCodec();
+    private final DenseVectorCodec denseVectorCodec = new DenseVectorCodec();
 
     @Value("${app.index-strategy:paragraph}")
     private String defaultStrategy;
@@ -52,12 +55,18 @@ public class IndexService {
         for(Chunk c : chunks){
             corpus.add(c.getContent());
         }
-        tfIdf.fit(corpus);
+        embeddingService.prepare(corpus);
 
-        String modelId = tfIdf.modelId();
+        String modelId = embeddingService.modelId();
+        boolean sparse = modelId.startsWith("tfidf");
         Set<Long> docIds = new LinkedHashSet<>();
         for(Chunk c : chunks){
-            c.setEmbeddingJson(codec.encode(tfIdf.embed(c.getContent())));
+            float[] vec = embeddingService.embed(c.getContent());
+            log.info("chunk={} head={} vec[0]={} vec[1]={}",
+                    c.getId(),
+                    c.getContent().substring(0, Math.min(12, c.getContent().length())),
+                    vec[0], vec[1]);
+            c.setEmbeddingJson(sparse ? codec.encode(vec) : denseVectorCodec.encode(vec));
             c.setEmbeddingModel(modelId);
             chunkMapper.updateById(c);
             docIds.add(c.getDocId());
@@ -69,26 +78,42 @@ public class IndexService {
 
         long elapsed = System.currentTimeMillis() - start;
         log.info("索引重建完成：strategy={} 文档 {} 篇 / 块 {} 条 / 维度 {} / 耗时 {} ms",
-                strategy, docIds.size(), chunks.size(), tfIdf.dim(), elapsed);
-        return new RebuildResult(strategy, docIds.size(), chunks.size(), indexed, tfIdf.dim(), modelId,
+                strategy, docIds.size(), chunks.size(), embeddingService.dim(), elapsed);
+        return new RebuildResult(strategy, docIds.size(), chunks.size(), indexed, embeddingService.dim(), modelId,
                 elapsed);
     }
 
     @PostConstruct
     public void restoreOnStartup(){
         try{
-            String modelId = restore(defaultStrategy);
-            if(modelId == null){
+            String vectorModelId = restore(defaultStrategy);
+
+            if(vectorModelId == null){
                 log.warn("启动恢复跳过：先调 POST /api/index/rebuild?strategy={} 建索引", defaultStrategy);
                 return;
             }
-            log.info("启动恢复成功：strategy={} modelId={}", defaultStrategy, modelId);
+
+            if(embeddingService.dim() > 0){
+                int n = chunkIndex.reload(defaultStrategy);
+                log.info("启动载入索引：strategy={} {} 块 / modelId={}",
+                        defaultStrategy, n, embeddingService.modelId());
+            } else {
+                log.warn("向量模型未就绪（modelId{}），检索不可用：先确认 embedding 服务已启动",
+                        embeddingService.modelId());
+            }
         } catch (Exception e){
             log.warn("启动恢复索引失败，检索暂不可用；{}", e.getMessage());
         }
     }
 
     public String restore(String strategy){
+
+        if(!(embeddingService instanceof TfIdfEmbeddingService tfidf)){
+            return null;
+        }
+
+        TfIdfEmbeddingService tfidfService = (TfIdfEmbeddingService) embeddingService;
+
         Path file = modelPath(strategy);
         if(!Files.exists(file)){
             return null;
@@ -104,12 +129,12 @@ public class IndexService {
             for(int i = 0; i< idfParts.length; i++){
                 idf[i] = Double.parseDouble(idfParts[i]);
             }
-            tfIdf.restore(parts[0], vocab, idf);
+            tfidf.restore(parts[0], vocab, idf);
         } catch (IOException e){
             throw new IllegalStateException("模型文件读取失败：" + file, e);
         }
         chunkIndex.reload(strategy);
-        return tfIdf.modelId();
+        return tfidfService.modelId();
     }
 
     public String defaultStrategy(){
@@ -117,7 +142,12 @@ public class IndexService {
     }
 
     private void saveModel(String strategy){
-        TfIdfEmbeddingService.Snapshot snapshot = tfIdf.snapshot();
+        
+        if (!(embeddingService instanceof TfIdfEmbeddingService)) {
+            return;
+        }
+        TfIdfEmbeddingService tfidfService = (TfIdfEmbeddingService) embeddingService;
+        TfIdfEmbeddingService.Snapshot snapshot = tfidfService.snapshot();
 
         StringBuilder idfText = new StringBuilder(snapshot.idf().length * 8);
         for(int i = 0; i< snapshot.idf().length; i++){

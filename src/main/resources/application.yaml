@@ -19,6 +19,11 @@ app:
   upload-dir: ./uploads
   index-strategy: paragraph
   index-dir: ./index
+  embedding:
+    provider: ollama
+    ollama:
+      base-url: http://localhost:8090
+      model: bge-small-zh
 
 mybatis-plus:
   configuration:

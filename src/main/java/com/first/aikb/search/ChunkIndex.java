@@ -1,6 +1,7 @@
 package com.first.aikb.search;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.first.aikb.embed.DenseVectorCodec;
 import com.first.aikb.embed.EmbeddingService;
 import com.first.aikb.embed.SparseVectorCodec;
 import com.first.aikb.entity.Chunk;
@@ -23,6 +24,7 @@ public class ChunkIndex {
     private final ChunkMapper chunkMapper;
     private final EmbeddingService embeddingService;
     private final SparseVectorCodec codec = new SparseVectorCodec();
+    private final DenseVectorCodec denseVectorCodec = new DenseVectorCodec();
 
     private volatile List<Entry> entries = List.of();
 
@@ -30,13 +32,18 @@ public class ChunkIndex {
     }
 
     public int reload(String strategy){
+
         String currentModel = embeddingService.modelId();
-        if(currentModel.startsWith("tfidf:untrained")){
+
+        int dim = embeddingService.dim();
+
+        if(dim <= 0 || currentModel.contains("untrained")){
             entries = List.of();
-            log.warn("TF-IDF 未训练，索引为空 —— 先调 POST /api/index/rebuild?strategy=" + strategy);
+            log.warn("向量模型未就绪（modelId={}, dim={}），索引为空", currentModel, dim);
             return 0;
         }
-        int dim = embeddingService.dim();
+
+        boolean sparse = currentModel.startsWith("tfidf");
 
         List<Chunk> rows = chunkMapper.selectList(new LambdaQueryWrapper<Chunk>()
                 .eq(Chunk::getStrategy, strategy)
@@ -46,7 +53,10 @@ public class ChunkIndex {
         List<Entry> loaded = new ArrayList<> (rows.size());
         int skipped = 0;
         for(Chunk row :rows){
-            float[] v = codec.decode(row.getEmbeddingJson(), dim);
+            float[] v = sparse
+                    ? codec.decode(row.getEmbeddingJson(), dim)
+                    : denseVectorCodec.decode(row.getEmbeddingJson(), dim);
+
             boolean empty = true;
             for(float x : v){
                 if(x != 0f){

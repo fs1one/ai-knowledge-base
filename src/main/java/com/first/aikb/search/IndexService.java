@@ -88,7 +88,7 @@ public class IndexService {
         try{
             String vectorModelId = restore(defaultStrategy);
 
-            if(vectorModelId == null){
+            if(vectorModelId != null){
                 log.warn("启动恢复跳过：先调 POST /api/index/rebuild?strategy={} 建索引", defaultStrategy);
                 return;
             }
